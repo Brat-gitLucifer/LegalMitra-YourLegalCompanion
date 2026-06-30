@@ -2,91 +2,100 @@
 
 > **UiPath AgentHack 2026 | Track: Maestro BPMN | Domain: Legal**
 
-LegalMitra is an AI-powered legal assistant that analyzes consumer complaints, researches relevant legal precedents using Retrieval-Augmented Generation (RAG), and assists lawyers in deciding whether a case should proceed to court or be settled outside. Built on **UiPath Maestro BPMN**, it combines AI, automation, and human oversight to dramatically reduce legal research time while making legal assistance accessible in multiple Indian languages.
+LegalMitra is an AI-powered legal assistant that analyzes consumer complaints, researches relevant legal precedents using Retrieval-Augmented Generation (RAG), and assists lawyers in deciding whether a case should proceed to court or be settled outside. Built on **UiPath Maestro BPMN**, it combines a UiPath Coded Agent, platform-native AI services, and human-in-the-loop review to dramatically reduce legal research time while making legal assistance accessible in multiple Indian languages.
 
 ---
 
-## 🚀 Problem Statement
+## 🚀 Project Description — Problem & Solution
 
-India receives millions of consumer complaints every year, yet a significant percentage of complainants lack access to affordable legal assistance.
+India receives roughly 5 million consumer complaints every year, and a large share of complainants — especially in Tier-2 and Tier-3 cities — have no practical access to legal help. The barriers are not legal, they are structural:
 
-Common challenges include:
+* Limited access to affordable lawyers outside major cities
+* Legal communication happens almost entirely in English
+* Legal research (finding applicable law and precedent) takes hours per case
+* No structured way to know upfront whether a complaint is even worth pursuing
 
-* Limited access to lawyers in Tier-2 and Tier-3 cities
-* English-only legal communication
-* Time-consuming legal research
-* Difficulty determining whether a case is worth pursuing
+**LegalMitra solves this end-to-end.** A victim emails their complaint. A UiPath Coded Agent reads the complaint, retrieves the most relevant judgments from a curated knowledge base of 100+ real NCDRC (National Consumer Disputes Redressal Commission) cases using Retrieval-Augmented Generation, and produces a structured legal analysis — applicable law, precedent, strengths, weaknesses, a confidence score, and a filing recommendation. The victim is immediately notified in plain language over WhatsApp in **English, Hindi, and their regional language**. The lawyer receives the full structured report and reviews it in **UiPath Action Center**, deciding whether to proceed to court or pursue settlement. The victim is notified of the outcome and the case lifecycle is tracked end-to-end in **UiPath Data Fabric**.
 
-LegalMitra addresses these challenges by automating legal research, generating grounded legal analysis, and keeping both victims and lawyers informed throughout the process.
-
----
-
-# ✨ Key Features
-
-* 📧 Automatic complaint intake from Gmail
-* 🤖 AI-powered legal case analysis
-* 📚 RAG-based retrieval from **100+ real NCDRC judgments**
-* ⚖️ Applicable Consumer Protection Act provisions
-* 📊 Deterministic confidence scoring
-* 🧑‍⚖️ Human-in-the-loop lawyer review via UiPath Action Center
-* 📱 Multi-language WhatsApp notifications
-* 🗃️ Persistent case tracking using UiPath Data Fabric
-* 📄 Structured legal reports for both victims and lawyers
+The result: legal research and drafting that took ~3 hours per case now completes in ~8 minutes — with a qualified human still making the final legal call.
 
 ---
 
-# 🏗 Solution Architecture
+## 🧩 UiPath Components Used
+
+| Component | Role in the Solution |
+|---|---|
+| **UiPath Maestro (BPMN)** | End-to-end process orchestration — intake, agent invocation, notification fan-out, lawyer review gateway, closure |
+| **Coded Agents** | The LegalMitra AI Agent — a Python LangGraph agent performing RAG-based legal analysis (see *Agent Type* below) |
+| **UiPath Apps** | `VictimCaseReview.uiapp` — the Action Center interface lawyers use for the human-in-the-loop review and Proceed/Settle decision |
+| **Integration Service — Gmail** | Trigger on incoming complaint email; sends case reports and notifications to victim and lawyer |
+| **Integration Service — Twilio** | Sends multi-language (English/Hindi/Regional) WhatsApp summaries to the victim |
+| **Integration Service — Data Fabric** | Persistent case entity — stores complaint details, agent output, lawyer decision, and case status across the entire lifecycle |
+| **Context Grounding** | Hosts the `CPACaseJudgements` semantic index over 100+ NCDRC judgment PDFs; the agent retrieves top-8 relevant precedents per case |
+| **Gen AI Activities / LLM Gateway** | Routes the agent's LLM calls (Claude) through UiPath's managed LLM Gateway |
+| **Orchestrator** | Hosts the Storage Bucket, the Context Grounding Index, the published Coded Agent, and the deployed UiPath App |
+
+---
+
+## 🤖 Agent Type
+
+**This solution uses a Coded Agent — not a Low-Code Agent.**
+
+The LegalMitra AI Agent (`main.py`) is built with **LangGraph** as a two-node Python graph (`retrieve_context` → `analyse_case`), using `uipath-langchain` to connect to UiPath's Context Grounding (RAG retrieval) and LLM Gateway (Claude). It is packaged and published as a UiPath Coded Agent via the `uipath` CLI and invoked from the Maestro BPMN process as an agent task.
+
+No Low-Code/Agent Builder agents are used in this solution.
+
+---
+
+## 🏗 Solution Architecture
 
 ```
 Complaint Email
       │
       ▼
- Gmail Integration Service
+ Gmail Integration Service (trigger)
       │
       ▼
 Data Fabric Case Creation
       │
       ▼
-LegalMitra AI Agent
-(LangGraph + RAG)
+LegalMitra Coded Agent
+(LangGraph + Context Grounding RAG)
       │
       ├──────────────┐
       ▼              ▼
 Detailed Report   WhatsApp Summary
+ (Victim email)   (EN / HI / Regional)
       │              │
       └──────┬───────┘
              ▼
- Victim Notification
+      Lawyer Report (Email)
              │
              ▼
- Lawyer Report
-             │
-             ▼
- Action Center Review
+ UiPath App — Action Center Review
              │
       ┌──────┴────────┐
       ▼               ▼
-Proceed          Settlement
+  Proceed         Settlement
       │               │
- Victim Updated   Case Closed
+Victim Notified   Case Closed
+(Email + WhatsApp)  (Data Fabric)
 ```
 
 ---
 
-# 🧠 AI Agent Workflow
-
-The LegalMitra AI Agent is implemented using **LangGraph** with a simple two-stage reasoning pipeline.
+## 🧠 Coded Agent — Internal Workflow
 
 ```
 START
    │
    ▼
-Retrieve Relevant Judgements
-(Context Grounding)
+retrieve_context
+(Context Grounding — top-8 semantic matches)
    │
    ▼
-Analyse Case
-(Claude 4.5 Sonnet)
+analyse_case
+(Claude via UiPath LLM Gateway)
    │
    ▼
 END
@@ -95,52 +104,44 @@ END
 The agent performs:
 
 * Semantic retrieval of similar consumer court judgments
-* Legal reasoning
-* Applicable law identification
-* Confidence scoring
-* Filing recommendation
-* Structured JSON output
+* Legal reasoning grounded in retrieved precedent
+* Applicable Consumer Protection Act 2019 provision identification
+* Five-criterion weighted confidence scoring
+* Filing recommendation (proceed / settle)
+* Structured JSON output consumed directly by the Maestro process
 
 ---
 
-# 📚 Retrieval-Augmented Generation (RAG)
+## 📚 Retrieval-Augmented Generation (RAG)
 
-Knowledge Base:
+**Knowledge Base:**
 
 * 100+ National Consumer Disputes Redressal Commission (NCDRC) judgments
-* Stored as PDFs
-* Indexed using UiPath Context Grounding
+* Stored as PDFs in a UiPath Storage Bucket
+* Indexed using UiPath Context Grounding (`CPACaseJudgements`)
 * Top-8 semantic matches retrieved for every complaint
 
-Supported dispute categories include:
+**Supported dispute categories:**
 
-* Property possession delay
-* Medical negligence
-* Banking & CIBIL disputes
-* E-commerce defects
-* Health insurance claims
-* Online education
-* Telecom services
-* Automobile defects
-* Airline refunds
-* Electricity billing
+Property possession delay · Medical negligence · Banking & CIBIL disputes · E-commerce defects · Health insurance claims · Online education · Telecom services · Automobile defects · Airline refunds · Electricity billing
 
 ---
 
-# ⚖️ Confidence Scoring
+## ⚖️ Confidence Scoring
 
-Each case is evaluated using five weighted legal criteria.
+Each case is evaluated using five weighted legal criteria:
 
-| Criterion               | Weight |
-| ----------------------- | -----: |
-| Case narration quality  |    30% |
-| Precedent applicability |    25% |
-| Legal provision clarity |    20% |
-| Claim quantifiability   |    15% |
-| Procedural compliance   |    10% |
+| Criterion | Weight |
+|---|---:|
+| Case narration quality | 30% |
+| Precedent applicability | 25% |
+| Legal provision clarity | 20% |
+| Claim quantifiability | 15% |
+| Procedural compliance | 10% |
 
+---
 
-# 📄 AI Output
+## 📄 Agent Output
 
 For every complaint the agent produces:
 
@@ -157,132 +158,156 @@ For every complaint the agent produces:
 
 ---
 
-# 🌍 Multi-Language Communication
+## 🌍 Multi-Language Communication
 
-Victims receive updates through WhatsApp in:
-
-* English
-* Hindi
-* Native regional language
-
-Regional language is automatically selected based on the detected city.
-
-Examples include:
-
-| City      | Language |
-| --------- | -------- |
-| Mumbai    | Marathi  |
-| Pune      | Marathi  |
-| Chennai   | Tamil    |
-| Bengaluru | Kannada  |
-| Hyderabad | Telugu   |
-| Kolkata   | Bengali  |
-| Ahmedabad | Gujarati |
+Victims receive updates via WhatsApp in English, Hindi, and their native regional language — automatically selected based on the detected city (e.g. Mumbai/Pune → Marathi, Chennai → Tamil, Bengaluru → Kannada, Hyderabad → Telugu, Kolkata → Bengali, Ahmedabad → Gujarati).
 
 ---
 
-# 👨‍⚖️ Human-in-the-Loop Review
+## 👨‍⚖️ Human-in-the-Loop Review
 
-The AI does **not** replace legal professionals.
-
-Every medium-confidence case is routed to **UiPath Action Center**, where a lawyer decides whether to:
-
-* Proceed with court filing
-* Pursue an outside settlement
-
-This keeps the final legal judgment with a human expert while allowing AI to automate research and documentation.
+The AI does **not** replace legal professionals. Every case is routed to a lawyer in the **UiPath App (Action Center)**, where they review the agent's full analysis and decide to **Proceed with court filing** or **Pursue an outside settlement**. The final legal judgment always rests with a human; the AI automates research, analysis, and documentation only.
 
 ---
 
-# 🛠 Technology Stack
+## 🛠 Technology Stack
 
-## UiPath
+**UiPath:** Maestro (BPMN) · Coded Agents · UiPath Apps · Integration Service (Gmail, Twilio, Data Fabric) · Context Grounding · Gen AI Activities / LLM Gateway · Orchestrator
 
-* Maestro BPMN
-* Integration Service(Twilio, Gmail)
-* Context Grounding
-* Data Fabric
-* Action Center
-* LLM Gateway
+**AI / Code:** LangGraph · `uipath-langchain` · Claude (via UiPath LLM Gateway) · Python
 
-## AI
-
-* LangGraph
-* Claude 4.5 Sonnet
-* Python
-
-## Integrations
-
-* Gmail
-* Twilio WhatsApp
-* Data Fabric
-* DocuSign (future enhancement)
+**External Integrations:** Gmail · Twilio WhatsApp · DocuSign (future enhancement)
 
 ---
 
-# 📂 Repository Structure
+## 📂 Repository Structure
 
 ```
 .
 ├── StudioWeb_Solutions/
-├── main.py
+│   ├── LegalMitra-YourLegalCompanion.uis    # Maestro BPMN process
+│   ├── VictimCaseReview.uiapp               # Lawyer review UiPath App
+│   └── [Coded Agent package]                # Published agent NuGet package
+├── main.py                                  # Coded Agent source (LangGraph)
+├── input.json                               # Sample input for local agent test run
 └── README.md
 ```
 
 ---
 
-# 📊 Results
+## ⚙️ Setup Instructions — How to Run This Solution
 
-| Activity             |        Before |          After |
-| -------------------- | ------------: | -------------: |
-| Legal research       |        90 min |         28 sec |
-| Case analysis        |        60 min |         45 sec |
-| Victim communication |        15 min |      Automated |
-| Translation          | Manual / None |        Instant |
-| **Total per case**   |  **~3 Hours** | **~8 Minutes** |
+Follow these steps in order. This solution requires an active UiPath Automation Cloud tenant with Orchestrator, Integration Service, Context Grounding, and Maestro enabled.
 
-Overall reduction in processing time:
+### 1. Set up the RAG knowledge base
+1. In **Orchestrator → Shared folder**, create a **Storage Bucket** (any name of your choice).
+2. Upload all files from `All_Case_Documents_ForIndexing.zip` into that bucket.
+3. Access `All_Case_Documents_ForIndexing.zip` via https://drive.google.com/file/d/1HfdKbZwCZNa6urc8mpQbh0EKHkWh3Da3/view?usp=drive_link
+4. In **Orchestrator → Shared folder**, create a **Context Grounding Index** named exactly **`CPACaseJudgements`**, sourced from the Storage Bucket created above.
+   > Both the Storage Bucket and the Index **must** be created in the **Shared** folder — the agent references the index by this exact name and folder.
 
-**≈95%**
+### 2. Create Integration Service connections
+In **Integration Service**, create connections for:
+* **Gmail** (used for complaint intake trigger and email notifications)
+* **Twilio** (used for WhatsApp notifications)
+* **Data Fabric** (used for case entity persistence)
+
+### 3. Set up and publish the Coded Agent
+1. Clone this repository.
+2. Create and activate a Python virtual environment.
+3. Install dependencies, including `uipath-langchain`.
+4. Authenticate the UiPath CLI:
+   ```bash
+   uipath auth --base-url [YOUR ENVIRONMENT URL]
+   ```
+5. Initialize the agent project:
+   ```bash
+   uipath init
+   ```
+6. (Optional — local test before publishing) Run the agent locally against the provided sample input:
+   ```bash
+   uipath run agent -f input.json
+   ```
+7. Package the agent:
+   ```bash
+   uipath pack
+   ```
+8. Publish the agent to Orchestrator:
+   ```bash
+   uipath publish -f [FOLDER PATH]
+   ```
+   > A pre-built Coded Agent NuGet package is also included in `StudioWeb_Solutions/` — you may publish this directly instead of building from source if you prefer.
+
+### 4. Deploy the UiPath App
+Deploy `VictimCaseReview.uiapp` (located in `StudioWeb_Solutions/`) to your Orchestrator tenant. This app powers the lawyer's human-in-the-loop review step.
+
+### 5. Import and configure the Maestro process
+1. In **Studio Web**, import `LegalMitra-YourLegalCompanion.uis` from `StudioWeb_Solutions/`.
+2. Once the Coded Agent and UiPath App are deployed, configure the corresponding nodes in the imported process:
+   * Bind the **Coded Agent** task to the agent published in Step 3.
+   * Bind the **UiPath App** task to `VictimCaseReview` deployed in Step 4.
+   * Bind the **Gmail**, **Twilio**, and **Data Fabric** connections created in Step 2.
+3. Hit **Debug** — the end-to-end process will now run in your environment: complaint email in → Coded Agent analysis → multi-language WhatsApp + email notifications → lawyer review in the UiPath App → final routing and case closure.
 
 ---
 
-# 🎯 Key Differentiators
+## 📊 Results
 
-* ✅ Grounded AI using real court judgments
-* ✅ Human-in-the-loop legal review
-* ✅ Multi-language legal communication
-* ✅ End-to-end BPMN orchestration
-* ✅ Automated legal research
-* ✅ Explainable confidence scoring
-* ✅ Persistent case lifecycle tracking
+| Activity | Before | After |
+|---|---:|---:|
+| Legal research | 90 min | 28 sec |
+| Case analysis | 60 min | 45 sec |
+| Victim communication | 15 min | Automated |
+| Translation | Manual / None | Instant |
+| **Total per case** | **~3 hours** | **~8 minutes** |
+
+**Overall reduction in processing time: ≈95%**
 
 ---
 
-# 🔮 Future Enhancements
+## 🎯 Key Differentiators
+
+* ✅ Grounded AI using real court judgments (Context Grounding RAG, not model memory)
+* ✅ Human-in-the-loop legal review via UiPath App / Action Center
+* ✅ Multi-language legal communication (English, Hindi, regional)
+* ✅ End-to-end Maestro BPMN orchestration
+* ✅ Coded Agent architecture — transparent, debuggable, version-controlled
+* ✅ Explainable, weighted confidence scoring
+* ✅ Persistent case lifecycle tracking in Data Fabric
+
+---
+
+## 🔮 Future Enhancements
 
 * Court document generation
-* Legal notice generation using DocuSign
+* Legal notice generation and e-signature via DocuSign
 * Voice-based complaint registration
 * Citizen portal for case tracking
 * Additional Indian legal domains beyond consumer disputes
 
 ---
 
-# 📜 License
+## 🧰 Coding Tools Used in Development
+
+* **Claude Chat** — solution planning, architecture design, LangChain/LangGraph code development
+* **ChatGPT** — document preparation
+* **Gemini Images** — YouTube and project thumbnail generation
+* **Claude & Antigravity** — coded agent local run and debugging
+* **UiPath Studio Web Autopilot (Helix, Claude Opus)** — assisted design of the Maestro BPMN flow diagram
+
+---
+
+## 📜 License
 
 This project was developed as part of **UiPath AgentHack 2026** for demonstration and educational purposes.
 
 ---
 
-# 👨‍💻 Author
+## 👨‍💻 Author
 
 **Built by:** Ashish Rao
-
 **Hackathon:** UiPath AgentHack 2026
-
 **Track:** Maestro BPMN
-
 **Domain:** Legal
 
 ---
